@@ -2,13 +2,14 @@ name: Cucumber Playwright Tests
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - 'testfix/**'
   workflow_dispatch:
     inputs:
       tags:
-        description: 'Cucumber tag filter (e.g. @smoke)'
+        description: 'Cucumber tag filter (e.g. @smoke or @regression)'
         required: false
         default: ''
 
@@ -16,7 +17,7 @@ jobs:
   test:
     name: Run BDD Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -58,32 +59,28 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm run install:browsers
 
+      - name: Install Xvfb (virtual display for headed mode)
+        run: sudo apt-get install -y xvfb
+
       - name: Run tests (all)
         if: ${{ !inputs.tags }}
-        run: pnpm test
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm test
         env:
-          BASE_URL: ${{ vars.BASE_URL || 'https://www.saucedemo.com' }}
-          HEADLESS: 'true'
+          HEADLESS: 'false'
+          DISPLAY:  ':99'
 
       - name: Run tests (with tag filter)
         if: ${{ inputs.tags }}
-        run: pnpm exec cucumber-js --tags "${{ inputs.tags }}"
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm exec cucumber-js --tags "${{ inputs.tags }}"
         env:
-          BASE_URL: ${{ vars.BASE_URL || 'https://www.saucedemo.com' }}
-          HEADLESS: 'true'
+          HEADLESS: 'false'
+          DISPLAY:  ':99'
 
-      - name: Upload HTML report
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cucumber-report
+          name: test-results-${{ github.ref_name }}-${{ github.run_number }}
           path: reports/
-          retention-days: 14
-
-      - name: Upload failure screenshots
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: failure-screenshots
-          path: reports/
-          retention-days: 7
+          retention-days: 30
+          if-no-files-found: warn

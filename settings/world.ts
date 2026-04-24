@@ -1,18 +1,15 @@
-import { World, IWorldOptions, setWorldConstructor } from '@cucumber/cucumber';
 import { Browser, BrowserContext, Page } from 'playwright';
-import { envConfig } from '../.envConfigrc';
+import { World, IWorldOptions, setWorldConstructor, setDefaultTimeout } from '@cucumber/cucumber';
+
+setDefaultTimeout(30_000);
 
 export class CustomWorld extends World {
   browser!: Browser;
   context!: BrowserContext;
   page!:    Page;
-  baseUrl:  string;
-  headless: boolean;
 
   constructor(options: IWorldOptions) {
     super(options);
-    this.baseUrl  = envConfig.baseUrl;
-    this.headless = envConfig.headless;
   }
 }
 

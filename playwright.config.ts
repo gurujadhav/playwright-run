@@ -9,11 +9,15 @@ export const launchOptions: LaunchOptions = {
 };
 
 export const contextOptions: BrowserContextOptions = {
-  viewport:           { width: 1280, height: 720 },
-  ignoreHTTPSErrors:  true,
-  locale:             'en-GB',
-  timezoneId:         'Europe/London',
-  acceptDownloads:    true,
+  viewport:          { width: 1280, height: 720 },
+  ignoreHTTPSErrors: true,
+  locale:            'en-GB',
+  timezoneId:        'Europe/London',
+  acceptDownloads:   true,
+  recordVideo: {
+    dir:  'reports/videos/',
+    size: { width: 1280, height: 720 },
+  },
 };
 
 export const timeouts = {

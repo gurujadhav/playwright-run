@@ -1,12 +1,17 @@
-import { config } from '@dotenvx/dotenvx';
+import { config } from "@dotenvx/dotenvx";
 config();
 
 export const envConfig = {
-  baseUrl:     process.env.BASE_URL  || 'https://www.saucedemo.com',
-  environment: process.env.ENV       || 'dev',
-  browser:     process.env.BROWSER   || 'chromium',
-  headless:    process.env.HEADLESS  !== 'false',
-  slowMo:      parseInt(process.env.SLOW_MO || '0', 10),
-  username:    process.env.USERNAME  || '',
-  password:    process.env.PASSWORD  || '',
+  baseUrl: {
+    labs: "https://labs.testifysamples.com/",
+  },
+  envName: {
+    labs: "test",
+  },
+  apiUrl: {
+    labs: "https://labs.testifysamples.com/",
+  },
+  browser: process.env.BROWSER || "chromium",
+  headless: process.env.HEADLESS === "true", // headed by default; CI sets HEADLESS=true
+  slowMo: 500, // slow down by 500ms to see the actions
 };

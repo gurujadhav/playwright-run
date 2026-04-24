@@ -2,8 +2,9 @@ module.exports = {
   default: {
     requireModule: ['ts-node/register'],
     require: [
-      'shared-objects/world.ts',
-      'shared-objects/hooks.ts',
+      'settings/globals.ts',        // must be first — sets Given/When/Then/DELAY_* on globalThis
+      'settings/world.ts',
+      'settings/hooks.ts',
       'step-definitions/**/*.ts'
     ],
     paths: ['features/**/*.feature'],
@@ -19,8 +20,9 @@ module.exports = {
   smoke: {
     requireModule: ['ts-node/register'],
     require: [
-      'shared-objects/world.ts',
-      'shared-objects/hooks.ts',
+      'settings/globals.ts',
+      'settings/world.ts',
+      'settings/hooks.ts',
       'step-definitions/**/*.ts'
     ],
     paths: ['features/**/*.feature'],

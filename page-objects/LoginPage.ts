@@ -1,45 +1,23 @@
-import { Page } from 'playwright';
-import { BasePage } from './BasePage';
+import helper = require("../shared-objects/helpers");
+import locators = require("../shared-objects/locators");
+import credentials = require("../test-data/credentials.json");
 
-export class LoginPage extends BasePage {
-  private readonly selectors = {
-    usernameInput: '#user-name',
-    passwordInput: '#password',
-    loginButton:   '#login-button',
-    errorMessage:  '[data-test="error"]',
-  };
+const loginPage = {
+  login: async (userType: string) => {
+    await helper.waitAndFill(
+      locators.login.username,
+      credentials[userType as keyof typeof credentials].username,
+    );
+    await helper.waitAndFill(
+      locators.login.password,
+      credentials[userType as keyof typeof credentials].password,
+    );
+    await helper.waitAndClick(locators.login.submitButton);
+  },
 
-  constructor(page: Page, baseUrl: string) {
-    super(page, baseUrl);
-  }
+  verifyLoginSuccess: async () => {
+    await helper.waitAndClick(locators.login.closePopupButton);
+  },
+};
 
-  async goto(): Promise<void> {
-    await this.navigate('/');
-  }
-
-  async enterUsername(username: string): Promise<void> {
-    await this.fill(this.selectors.usernameInput, username);
-  }
-
-  async enterPassword(password: string): Promise<void> {
-    await this.fill(this.selectors.passwordInput, password);
-  }
-
-  async clickLoginButton(): Promise<void> {
-    await this.click(this.selectors.loginButton);
-  }
-
-  async login(username: string, password: string): Promise<void> {
-    await this.enterUsername(username);
-    await this.enterPassword(password);
-    await this.clickLoginButton();
-  }
-
-  async getErrorMessage(): Promise<string> {
-    return this.getText(this.selectors.errorMessage);
-  }
-
-  async isErrorVisible(): Promise<boolean> {
-    return this.isVisible(this.selectors.errorMessage);
-  }
-}
+export = loginPage;
