@@ -1,0 +1,22 @@
+{
+  "name": "testify-samples-test-suite",
+  "version": "1.0.0",
+  "description": "Cucumber + Playwright BDD Test Framework",
+  "scripts": {
+    "test": "cucumber-js",
+    "test:smoke": "cucumber-js --profile smoke",
+    "test:tags": "cucumber-js --tags",
+    "test:report": "cucumber-js --format html:reports/report.html",
+    "install:browsers": "playwright install chromium"
+  },
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.0.0"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^10.8.0",
+    "@types/node": "^20.14.0",
+    "playwright": "^1.44.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

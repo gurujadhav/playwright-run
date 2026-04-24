@@ -1,0 +1,9 @@
+{
+  "cucumber.features": [
+    "features/**/*.feature"
+  ],
+  "cucumber.glue": [
+    "step-definitions/**/*.ts"
+  ],
+  "cucumber.parameterTypes": []
+}
