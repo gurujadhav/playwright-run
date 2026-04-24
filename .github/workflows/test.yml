@@ -6,23 +6,34 @@ on:
       - main
       - develop
       - 'testfix/**'
+
+  # Triggered by API call from another repo.
+  # Payload: { "feature": "login" }  → runs @login tag
+  # Payload: { "feature": "" }       → runs all tests
+  repository_dispatch:
+    types: [run-tests]
+
   workflow_dispatch:
     inputs:
       tags:
-        description: 'Cucumber tag filter (e.g. @smoke or @regression)'
+        description: 'Cucumber tag filter (e.g. @smoke or @login)'
         required: false
         default: ''
 
-# Cancel any in-progress run on the same branch when a new push arrives.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Run BDD Tests
+    name: ${{ matrix.browser }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit, msedge]
 
     steps:
       - name: Checkout repository
@@ -53,19 +64,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache Playwright browsers
+      - name: Cache Playwright browser — ${{ matrix.browser }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.browser }}-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-playwright-
+            ${{ runner.os }}-playwright-${{ matrix.browser }}-
 
-      - name: Install Playwright browsers
-        run: pnpm run install:browsers
+      - name: Install Playwright browser — ${{ matrix.browser }}
+        run: pnpm exec playwright install ${{ matrix.browser }} --with-deps
 
-      # Create .env from GitHub Secrets so dotenvx can load credentials.
-      # Add matching secrets in: Settings → Secrets and variables → Actions
       - name: Create .env file
         run: |
           cat > .env << 'EOF'
@@ -78,26 +87,45 @@ jobs:
       - name: Install Xvfb
         run: sudo apt-get install -y xvfb
 
-      - name: Run tests (all)
-        if: ${{ !inputs.tags }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm test
+      # Resolve which tag to run:
+      #   repository_dispatch  → @<feature> from payload (or all if empty)
+      #   workflow_dispatch    → inputs.tags
+      #   push                 → all tests
+      - name: Resolve test tags
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            FEATURE="${{ github.event.client_payload.feature }}"
+            if [[ -n "$FEATURE" ]]; then
+              echo "tags=@${FEATURE}" >> $GITHUB_OUTPUT
+            else
+              echo "tags=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "tags=${{ inputs.tags }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests
+        run: |
+          TAGS="${{ steps.resolve.outputs.tags }}"
+          if [[ -n "$TAGS" ]]; then
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
+              pnpm exec cucumber-js --tags "$TAGS"
+          else
+            xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
+              pnpm test
+          fi
         env:
+          BROWSER:  ${{ matrix.browser }}
           HEADLESS: 'false'
           DISPLAY:  ':99'
 
-      - name: Run tests (tag filter)
-        if: ${{ inputs.tags }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm exec cucumber-js --tags "${{ inputs.tags }}"
-        env:
-          HEADLESS: 'false'
-          DISPLAY:  ':99'
-
-      - name: Upload test results
+      - name: Upload test results — ${{ matrix.browser }}
         if: always()
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ github.ref_name }}-${{ github.run_number }}
+          name: test-results-${{ github.ref_name }}-run${{ github.run_number }}-${{ matrix.browser }}
           path: reports/
           retention-days: 30
           if-no-files-found: warn
@@ -105,12 +133,61 @@ jobs:
       - name: Write artifact link to job summary
         if: always()
         run: |
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          TAGS="${{ steps.resolve.outputs.tags }}"
+          SOURCE="${{ github.event.client_payload.branch || github.ref_name }}"
+          echo "## ${{ matrix.browser }} — Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| | |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Run | [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Browser  | \`${{ matrix.browser }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source   | \`${SOURCE}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tags run | \`${TAGS:-all}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run      | [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 [Download reports & videos](${{ steps.upload.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
+
+  # ── Feedback job ────────────────────────────────────────────────────────────
+  # Runs only when triggered by repository_dispatch (cross-repo push).
+  # Posts a GitHub commit status back to the source repo so the original
+  # commit shows ✅ / ❌ directly on that repo's commit/PR page.
+  #
+  # SETUP: PLY_DISPATCH_TOKEN must have repo:status scope on the source repo.
+  # ────────────────────────────────────────────────────────────────────────────
+  notify:
+    name: Report status to source repo
+    runs-on: ubuntu-latest
+    needs: test
+    if: always() && github.event_name == 'repository_dispatch'
+
+    steps:
+      - name: Post commit status
+        env:
+          TOKEN:       ${{ secrets.PLY_DISPATCH_TOKEN }}
+          SOURCE_REPO: ${{ github.event.client_payload.repo }}
+          SHA:         ${{ github.event.client_payload.sha }}
+          RUN_URL:     ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS:  ${{ needs.test.result }}
+        run: |
+          case "$JOB_STATUS" in
+            success)   STATE="success"; DESC="All Playwright tests passed" ;;
+            failure)   STATE="failure"; DESC="One or more Playwright tests failed" ;;
+            cancelled) STATE="error";   DESC="Playwright test run was cancelled" ;;
+            *)         STATE="error";   DESC="Playwright test run ended with status: $JOB_STATUS" ;;
+          esac
+
+          PAYLOAD="$(jq -n \
+            --arg state "$STATE" \
+            --arg url   "$RUN_URL" \
+            --arg desc  "$DESC" \
+            '{ state: $state, target_url: $url, description: $desc, context: "playwright-tests" }')"
+
+          HTTP_CODE="$(curl -s -w '%{http_code}' -o /dev/null \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/$SOURCE_REPO/statuses/$SHA" \
+            -d "$PAYLOAD")"
+
+          echo "Commit status posted to $SOURCE_REPO@${SHA:0:7}: $STATE (HTTP $HTTP_CODE)"
+          [[ "$HTTP_CODE" =~ ^2 ]] || exit 1

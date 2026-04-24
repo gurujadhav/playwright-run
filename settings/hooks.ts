@@ -1,15 +1,28 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Before, After, BeforeAll, AfterAll, Status } from '@cucumber/cucumber';
-import { chromium, Browser } from 'playwright';
+import { chromium, firefox, webkit, Browser } from 'playwright';
 import { CustomWorld } from './world';
 import { launchOptions, contextOptions } from '../playwright.config';
+import { envConfig } from '../.envConfigrc';
 
 let browser: Browser;
 
+async function launchBrowser(): Promise<Browser> {
+  switch (envConfig.browser.toLowerCase()) {
+    case 'firefox':             return firefox.launch(launchOptions);
+    case 'webkit':
+    case 'safari':              return webkit.launch(launchOptions);
+    case 'msedge':
+    case 'edge':                return chromium.launch({ ...launchOptions, channel: 'msedge' });
+    case 'chrome':              return chromium.launch({ ...launchOptions, channel: 'chrome' });
+    default:                    return chromium.launch(launchOptions);
+  }
+}
+
 BeforeAll({ timeout: 30_000 }, async function () {
   fs.mkdirSync('reports/videos', { recursive: true });
-  browser = await chromium.launch(launchOptions);
+  browser = await launchBrowser();
 });
 
 AfterAll(async function () {
@@ -34,11 +47,12 @@ After({ timeout: 60_000 }, async function (this: CustomWorld, scenario) {
 
   if (video) {
     const tmpPath = await video.path();
+    const browserName = envConfig.browser.toLowerCase();
     const safeName = scenario.pickle.name
       .replace(/[^a-z0-9]/gi, '_')
       .toLowerCase()
-      .slice(0, 80);
-    const namedPath = path.join('reports', 'videos', `${safeName}.webm`);
+      .slice(0, 60);
+    const namedPath = path.join('reports', 'videos', `${browserName}_${safeName}.webm`);
 
     await video.saveAs(namedPath);
     fs.unlinkSync(tmpPath);

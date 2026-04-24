@@ -9,14 +9,14 @@ export const launchOptions: LaunchOptions = {
 };
 
 export const contextOptions: BrowserContextOptions = {
-  viewport:          { width: 1280, height: 720 },
+  viewport:          { width: 1280, height: 1024 },
   ignoreHTTPSErrors: true,
   locale:            'en-GB',
   timezoneId:        'Europe/London',
   acceptDownloads:   true,
   recordVideo: {
     dir:  'reports/videos/',
-    size: { width: 1280, height: 720 },
+    size: { width: 1280, height: 1024 },
   },
 };
 
