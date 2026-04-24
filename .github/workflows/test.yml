@@ -14,7 +14,6 @@ on:
         default: ''
 
 # Cancel any in-progress run on the same branch when a new push arrives.
-# Saves free-tier minutes by not running stale commits.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,10 +21,6 @@ concurrency:
 jobs:
   test:
     name: Run BDD Tests
-    # ubuntu-latest = Ubuntu 24.04
-    # - 1× minute multiplier (Windows = 2×, macOS = 10×) → cheapest on free tier
-    # - pre-installed: Node, Chrome deps, Xvfb, Git
-    # - fastest cold-start of all GitHub-hosted runners
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -36,7 +31,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -69,7 +64,17 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm run install:browsers
 
-      # Xvfb provides a virtual display so Chromium can run in headed mode on Linux
+      # Create .env from GitHub Secrets so dotenvx can load credentials.
+      # Add matching secrets in: Settings → Secrets and variables → Actions
+      - name: Create .env file
+        run: |
+          cat > .env << 'EOF'
+          USERNAME=${{ secrets.APP_USERNAME }}
+          PASSWORD=${{ secrets.APP_PASSWORD }}
+          LT_USERNAME=${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY=${{ secrets.LT_ACCESS_KEY }}
+          EOF
+
       - name: Install Xvfb
         run: sudo apt-get install -y xvfb
 
@@ -87,7 +92,6 @@ jobs:
           HEADLESS: 'false'
           DISPLAY:  ':99'
 
-      # Always upload even on failure — that's when you need the report most
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
