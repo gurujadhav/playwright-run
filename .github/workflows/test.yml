@@ -94,9 +94,23 @@ jobs:
 
       - name: Upload test results
         if: always()
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ github.ref_name }}-${{ github.run_number }}
           path: reports/
           retention-days: 30
           if-no-files-found: warn
+
+      - name: Write artifact link to job summary
+        if: always()
+        run: |
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run | [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 [Download reports & videos](${{ steps.upload.outputs.artifact-url }})" >> $GITHUB_STEP_SUMMARY
