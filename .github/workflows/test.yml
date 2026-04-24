@@ -13,9 +13,19 @@ on:
         required: false
         default: ''
 
+# Cancel any in-progress run on the same branch when a new push arrives.
+# Saves free-tier minutes by not running stale commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Run BDD Tests
+    # ubuntu-latest = Ubuntu 24.04
+    # - 1× minute multiplier (Windows = 2×, macOS = 10×) → cheapest on free tier
+    # - pre-installed: Node, Chrome deps, Xvfb, Git
+    # - fastest cold-start of all GitHub-hosted runners
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -59,7 +69,8 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm run install:browsers
 
-      - name: Install Xvfb (virtual display for headed mode)
+      # Xvfb provides a virtual display so Chromium can run in headed mode on Linux
+      - name: Install Xvfb
         run: sudo apt-get install -y xvfb
 
       - name: Run tests (all)
@@ -69,13 +80,14 @@ jobs:
           HEADLESS: 'false'
           DISPLAY:  ':99'
 
-      - name: Run tests (with tag filter)
+      - name: Run tests (tag filter)
         if: ${{ inputs.tags }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm exec cucumber-js --tags "${{ inputs.tags }}"
         env:
           HEADLESS: 'false'
           DISPLAY:  ':99'
 
+      # Always upload even on failure — that's when you need the report most
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
