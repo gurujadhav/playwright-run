@@ -93,16 +93,26 @@ jobs:
       #   push                 → all tests
       - name: Resolve test tags
         id: resolve
+        env:
+          FEATURE:    ${{ github.event.client_payload.feature }}
+          EVENT:      ${{ github.event_name }}
+          INPUT_TAGS: ${{ inputs.tags }}
         run: |
-          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
-            FEATURE="${{ github.event.client_payload.feature }}"
-            if [[ -n "$FEATURE" ]]; then
-              echo "tags=@${FEATURE}" >> $GITHUB_OUTPUT
+          if [[ "$EVENT" == "repository_dispatch" ]]; then
+            if [[ -z "$FEATURE" ]]; then
+              # empty feature → run all tests
+              echo "tags=" >> "$GITHUB_OUTPUT"
             else
-              echo "tags=" >> $GITHUB_OUTPUT
+              # single:  "login"         → @login
+              # multi:   "login signup"  → @login or @signup  (stage/** branches)
+              TAGS=""
+              for feat in $FEATURE; do
+                [[ -z "$TAGS" ]] && TAGS="@${feat}" || TAGS="${TAGS} or @${feat}"
+              done
+              echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "tags=${{ inputs.tags }}" >> $GITHUB_OUTPUT
+            echo "tags=${INPUT_TAGS}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run tests
