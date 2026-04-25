@@ -1,0 +1,93 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# BRANCH → TEST TAG MAPPING
+#   main                      → @regression    (push + nightly 02:00 IST)
+#   develop                   → @regression    (push)
+#   stage                     → @regression    (push)
+#   stage/<feat1>/<feat2>     → @<feat1> @<feat2> (push)
+#   all other branches        → no trigger
+#
+# SETUP (one-time)
+#   1. Create a PAT (classic) with the "repo" scope, OR a fine-grained PAT with
+#      Contents: Read & Write on the gurujadhav/playwright-run repo.
+#   2. Add it as a secret named PLY_DISPATCH_TOKEN in this repo:
+#      Settings → Secrets and variables → Actions → New repository secret
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Trigger Playwright Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - stage
+      - 'stage/**'
+  schedule:
+    - cron: '30 20 * * *'   # 02:00 IST daily  (IST = UTC+5:30 → UTC 20:30)
+
+jobs:
+  trigger:
+    name: Trigger tests in playwright-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Resolve tags from branch
+        id: config
+        env:
+          BRANCH: ${{ github.ref_name }}
+          EVENT:  ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "schedule" ]]; then
+            FEATURE="regression"
+
+          elif [[ "$BRANCH" == "main" || "$BRANCH" == "develop" || "$BRANCH" == "stage" ]]; then
+            FEATURE="regression"
+
+          elif [[ "$BRANCH" == stage/*/* ]]; then
+            # stage/login/signup  → "login signup"
+            remainder="${BRANCH#stage/}"
+            feat1="${remainder%%/*}"
+            rest="${remainder#*/}"
+            feat2="${rest%%/*}"
+            FEATURE="$feat1 $feat2"
+
+          else
+            echo "Branch '$BRANCH' not configured — skipping."
+            exit 0
+          fi
+
+          echo "feature=$FEATURE" >> "$GITHUB_OUTPUT"
+          echo "Branch: $BRANCH  |  Event: $EVENT  |  Tags: $FEATURE"
+
+      - name: Trigger Playwright test run
+        if: steps.config.outputs.feature != ''
+        env:
+          TOKEN:   ${{ secrets.PLY_DISPATCH_TOKEN }}
+          FEATURE: ${{ steps.config.outputs.feature }}
+          BRANCH:  ${{ github.ref_name }}
+          REPO:    ${{ github.repository }}
+          SHA:     ${{ github.sha }}
+        run: |
+          PAYLOAD="$(jq -n \
+            --arg feature "$FEATURE" \
+            --arg branch  "$BRANCH"  \
+            --arg repo    "$REPO"    \
+            --arg sha     "$SHA"     \
+            '{
+              event_type: "run-tests",
+              client_payload: { feature: $feature, branch: $branch, repo: $repo, sha: $sha }
+            }')"
+
+          HTTP_CODE="$(curl -s -w '%{http_code}' -o /tmp/gh_response.json \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/gurujadhav/playwright-run/dispatches \
+            -d "$PAYLOAD")"
+
+          echo "GitHub API responded: HTTP $HTTP_CODE"
+          cat /tmp/gh_response.json
+          [[ "$HTTP_CODE" =~ ^2 ]] || exit 1
